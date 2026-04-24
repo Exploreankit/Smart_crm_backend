@@ -1,0 +1,180 @@
+// Prisma Schema for Smart CRM
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  SALESPERSON
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  CLOSED
+}
+
+enum LeadTemperature {
+  HOT
+  WARM
+  COLD
+}
+
+enum TaskStatus {
+  PENDING
+  COMPLETED
+  OVERDUE
+}
+
+enum ActivityType {
+  CALL
+  MEETING
+  EMAIL
+  NOTE
+  STATUS_CHANGE
+  TASK_CREATED
+  TASK_COMPLETED
+  LEAD_CREATED
+  LEAD_ASSIGNED
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  password     String
+  role         Role     @default(SALESPERSON)
+  avatar       String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  assignedLeads  Lead[]         @relation("AssignedLeads")
+  createdLeads   Lead[]         @relation("CreatedLeads")
+  tasks          Task[]
+  activities     Activity[]
+  notes          Note[]
+  refreshTokens  RefreshToken[]
+
+  @@map("users")
+}
+
+/// Stores hashed refresh tokens — allows multi-device sessions and secure revocation
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique  // stores the hashed token
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Lead {
+  id           String          @id @default(cuid())
+  name         String
+  email        String
+  phone        String?
+  company      String?
+  dealValue    Float           @default(0)
+  status       LeadStatus      @default(NEW)
+  temperature  LeadTemperature @default(COLD)
+  score        Int             @default(0)
+  source       String?
+  tags         String[]        @default([])
+  
+  // Scoring metadata
+  lastActivityAt    DateTime?
+  interactionCount  Int       @default(0)
+
+  // Foreign keys
+  assignedToId String?
+  createdById  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  assignedTo User?      @relation("AssignedLeads", fields: [assignedToId], references: [id])
+  createdBy  User       @relation("CreatedLeads", fields: [createdById], references: [id])
+  tasks      Task[]
+  activities Activity[]
+  notes      Note[]
+
+  @@map("leads")
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  dueDate     DateTime
+  status      TaskStatus @default(PENDING)
+  priority    String     @default("MEDIUM") // LOW, MEDIUM, HIGH
+
+  // Foreign keys
+  leadId String
+  userId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("tasks")
+}
+
+model Activity {
+  id          String       @id @default(cuid())
+  type        ActivityType
+  description String
+  metadata    Json?        // Extra data (e.g., old/new status for changes)
+
+  // Foreign keys
+  leadId String
+  userId String
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("activities")
+}
+
+model Note {
+  id      String @id @default(cuid())
+  content String
+
+  // Foreign keys
+  leadId String
+  userId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("notes")
+}
